@@ -72,26 +72,23 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 
 	var (
 		nextLevel func(n *Node, path, sub, prefix []byte, cur uint) error
-		readDirectory func(fn WalkLevelFunc, path []byte, pCur *uint) (int, error)
+		readDirectory func(fn WalkLevelFunc, start int, path []byte, pCur *uint) (int, error)
 	)
 
-	readDirectory = func(fn WalkLevelFunc, path []byte, pCur *uint) (int, error) {
-		pathSlash := bytes.IndexByte(path, byte(PathSeparator))
-		i := pathSlash + 1
-		if pathSlash != -1 {
-			for j := i; j < len(path); j++ {
-				if path[j] == byte(PathSeparator) {
-					copyPath := make([]byte, j)
-					copy(copyPath, path[:j])
-					if err := walker(Directory, copyPath, []byte{}, nil); err != nil {
-						return j, err
-					}
-					i = j + 1
-					*pCur++
+	readDirectory = func(fn WalkLevelFunc, start int, path []byte, pCur *uint) (int, error) {
+		i := start
+		for j := i; j < len(path); j++ {
+			if path[j] == byte(PathSeparator) {
+				copyPath := make([]byte, j)
+				copy(copyPath, path[:j])
+				if err := walker(Directory, copyPath, []byte{}, nil); err != nil {
+					return j, err
 				}
-				if *pCur > level {
-					return i, maxHeight
-				}
+				i = j + 1
+				*pCur++
+			}
+			if *pCur > level {
+				return i, maxHeight
 			}
 		}
 		return i, nil
@@ -109,74 +106,54 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 
 		prefix = append(sub, prefix...)
 
-		if next.IsValueType() {
+		lastPathSlash := bytes.LastIndexByte(path, byte(PathSeparator)) + 1
+		lastPrefixSlash := bytes.LastIndexByte(prefix, byte(PathSeparator))
+
+		if next.IsValueType() && lastPrefixSlash < len(prefix) - 1 {
 			curPath := path
 			curPrefix := prefix
 
-			if bytes.IndexByte(prefix, byte(PathSeparator)) != -1 {
-				path = append(path, prefix...)
-				idx, err := readDirectory(walker, path, &cur)
+			if lastPrefixSlash != -1 {
+				curPath = append(curPath, prefix...)
+				idx, err := readDirectory(walker, lastPathSlash, curPath, &cur)
 				if err != nil {
 					if errors.Is(err, maxHeight) {
 						return nil
 					}
 					return err
 				}
-				curPath = path[:idx]
-				curPrefix = path[idx:]
+				curPrefix = curPath[idx:]
+				curPath = curPath[:idx]
 			}
 
-			return walker(File, curPath, curPrefix, next.Reference())
+			if err := walker(File, curPath, curPrefix, next.Reference()); err != nil {
+				return err
+			}
+		}
+
+		if !next.IsEdgeType() {
+			return nil
 		}
 
 		path = append(path, prefix...)
 
 		for _, fork := range next.forks {
-			if fork.IsEdgeType() {
-				idx, err := readDirectory(walker, path, &cur)
-				if err != nil {
-					if errors.Is(err, maxHeight) {
-						continue
-					}
-					return err
-				}
-				var curPath, subPath []byte
-				dirSlash := bytes.IndexByte(fork.prefix, byte(PathSeparator))
-				if dirSlash != -1 {
-					copyPath := make([]byte, len(path)+dirSlash+1)
-					copy(copyPath, path)
-					copy(copyPath[len(path):], fork.prefix[:dirSlash+1])
-					if err := walker(Directory, copyPath, emptyPath, nil); err != nil {
-						return err
-					}
-					curPath = copyPath
-					subPath = fork.prefix[dirSlash+1:]
-				} else {
-					curPath = path[:idx]
-					subPath = make([]byte, len(path)+len(fork.prefix)-idx)
-					copy(subPath, path[idx:])
-					copy(subPath[len(path)-idx:], fork.prefix)
-				}
-				if cur <= level {
-					q.PushBack(&nodeTag{Node: fork.Node, path: curPath, subPath: subPath, level: cur + 1})
-				}
-			}
 			if fork.IsValueType() {
 				if fork.IsWithPathSeparatorType() {
 					if err := nextLevel(next, path, emptyPath, fork.prefix, cur + 1); err != nil {
 						return err
 					}
+					continue
 				} else {
-					lastSlash := bytes.LastIndexByte(prefix, byte(PathSeparator))
 					lastForkSlash := bytes.LastIndexByte(fork.prefix, byte(PathSeparator))
 					curPath := make([]byte, len(path))
 					copy(curPath, path)
 					curPrefix := make([]byte, len(prefix))
 					copy(curPrefix, prefix)
-					curPrefix = curPrefix[lastSlash+1:]
+					curPrefix = curPrefix[lastPrefixSlash+1:]
 					if lastForkSlash != -1 {
 						curPath = append(curPath, fork.prefix[:lastForkSlash+1]...)
-						idx, err := readDirectory(walker, curPath, &cur)
+						idx, err := readDirectory(walker, lastPathSlash, curPath, &cur)
 						if err != nil {
 							if errors.Is(err, maxHeight) {
 								continue
@@ -192,6 +169,37 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 					if err := walker(File, curPath, curPrefix, fork.Reference()); err != nil {
 						return err
 					}
+				}
+			}
+
+			if fork.IsEdgeType() {
+				idx, err := readDirectory(walker, lastPathSlash, path, &cur)
+				if err != nil {
+					if errors.Is(err, maxHeight) {
+						continue
+					}
+					return err
+				}
+				var curPath, subPath []byte
+				dirSlash := bytes.LastIndexByte(fork.prefix, byte(PathSeparator))
+				if dirSlash != -1 {
+					copyPath := make([]byte, len(path)+dirSlash+1)
+					copy(copyPath, path)
+					copy(copyPath[len(path):], fork.prefix[:dirSlash+1])
+					idx, err := readDirectory(walker, idx, copyPath, &cur)
+					if err != nil {
+						return err
+					}
+					curPath = copyPath[:idx]
+					subPath = fork.prefix[dirSlash+1:]
+				} else {
+					curPath = path[:idx]
+					subPath = make([]byte, len(path)+len(fork.prefix)-idx)
+					copy(subPath, path[idx:])
+					copy(subPath[len(path)-idx:], fork.prefix)
+				}
+				if cur <= level {
+					q.PushBack(&nodeTag{Node: fork.Node, path: curPath, subPath: subPath, level: cur + 1})
 				}
 			}
 		}
@@ -217,7 +225,9 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 		l := t.level
 		path := append(t.path, t.subPath...)
 
-		idx, err := readDirectory(walker, path, &l)
+		lastPathSlash := bytes.LastIndexByte(path, byte(PathSeparator)) + 1
+
+		idx, err := readDirectory(walker, lastPathSlash, path, &l)
 		if err != nil {
 			if !errors.Is(err, maxHeight) {
 				return err
