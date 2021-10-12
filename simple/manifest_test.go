@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/manifest/simple"
+	"github.com/gauss-project/manifest/simple"
 )
 
 // randomAddress generates a random address.
