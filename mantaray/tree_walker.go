@@ -63,8 +63,13 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 	if len(root) != 0 {
 		lastSlash := bytes.LastIndexByte(root, byte(PathSeparator))
 		if lastSlash != -1 {
-			root = root[lastSlash+1:]
+			if len(remain) > 0 && remain[0] == byte(PathSeparator) {
+				root = root[lastSlash:]
+			} else {
+				root = root[lastSlash+1:]
+			}
 		}
+
 		root = bytes.TrimSuffix(root, remain)
 		remain = append(remain, byte(PathSeparator))
 	}
@@ -108,6 +113,13 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 
 		prefix = append(sub, prefix...)
 
+		if prefix[0] == byte(PathSeparator) {
+			path = append(path, prefix[0])
+			prefix = prefix[1:]
+		}
+
+		path = bytes.TrimPrefix(path, []byte{byte(PathSeparator)})
+
 		lastPathSlash := bytes.LastIndexByte(path, byte(PathSeparator)) + 1
 		lastPrefixSlash := bytes.LastIndexByte(prefix, byte(PathSeparator))
 
@@ -140,25 +152,20 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 
 		path = append(path, prefix...)
 
-		if next.IsWithPathSeparatorType() {
-			if lastPrefixSlash != -1 {
-				idx, err := readDirectory(walker, lastPathSlash, path, &cur)
-				if err != nil {
-					if !errors.Is(err, errMaxHeight) {
-						return err
-					}
+		if lastPrefixSlash != -1 {
+			idx, err := readDirectory(walker, lastPathSlash, path, &cur)
+			if err != nil {
+				if !errors.Is(err, errMaxHeight) {
+					return err
 				}
-				lastPathSlash = idx
 			}
+			lastPathSlash = idx
 		}
 
 		for _, fork := range next.forks {
 			if fork.IsValueType() {
 				tempCur := cur
 				if fork.IsWithPathSeparatorType() {
-					if lastPathSlash == len(path) {
-						tempCur++
-					}
 					if err := nextLevel(next, path, emptyPath, fork.prefix, tempCur); err != nil {
 						return err
 					}
