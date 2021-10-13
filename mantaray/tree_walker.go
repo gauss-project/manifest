@@ -15,15 +15,15 @@ const (
 )
 
 var (
-	emptyPath = []byte{}
+	emptyPath    = []byte{}
 	errMaxHeight = errors.New("reach maximum directory level")
 )
 
 type nodeTag struct {
 	*Node
-	path []byte
+	path    []byte
 	subPath []byte
-	level uint
+	level   uint
 }
 
 func (n *Node) lookupClosest(ctx context.Context, path []byte, l Loader) (*Node, []byte, error) {
@@ -78,7 +78,7 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 	q.PushBack(&nodeTag{Node: node, path: root, subPath: emptyPath})
 
 	var (
-		nextLevel func(n *Node, path, sub, prefix []byte, cur uint) error
+		nextLevel     func(n *Node, path, sub, prefix []byte, cur uint) error
 		readDirectory func(fn WalkLevelFunc, start int, path []byte, pCur *uint) (int, error)
 	)
 
@@ -123,7 +123,7 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 		lastPathSlash := bytes.LastIndexByte(path, byte(PathSeparator)) + 1
 		lastPrefixSlash := bytes.LastIndexByte(prefix, byte(PathSeparator))
 
-		if next.IsValueType() && lastPrefixSlash < len(prefix) - 1 {
+		if next.IsValueType() && lastPrefixSlash < len(prefix)-1 {
 			curPath := path
 			curPrefix := prefix
 
