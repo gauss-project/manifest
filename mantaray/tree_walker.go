@@ -124,6 +124,7 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 					}
 					return err
 				}
+				lastPathSlash = idx
 				curPrefix = curPath[idx:]
 				curPath = curPath[:idx]
 			}
@@ -139,12 +140,26 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 
 		path = append(path, prefix...)
 
-		for _, fork := range next.forks {
-			storeCur := cur
+		if next.IsWithPathSeparatorType() {
+			if lastPrefixSlash != -1 {
+				idx, err := readDirectory(walker, lastPathSlash, path, &cur)
+				if err != nil {
+					if !errors.Is(err, errMaxHeight) {
+						return err
+					}
+				}
+				lastPathSlash = idx
+			}
+		}
 
+		for _, fork := range next.forks {
 			if fork.IsValueType() {
+				tempCur := cur
 				if fork.IsWithPathSeparatorType() {
-					if err := nextLevel(next, path, emptyPath, fork.prefix, storeCur + 1); err != nil {
+					if lastPathSlash == len(path) {
+						tempCur++
+					}
+					if err := nextLevel(next, path, emptyPath, fork.prefix, tempCur); err != nil {
 						return err
 					}
 					continue
@@ -157,7 +172,7 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 					curPrefix = curPrefix[lastPrefixSlash+1:]
 					if lastForkSlash != -1 {
 						curPath = append(curPath, fork.prefix[:lastForkSlash+1]...)
-						idx, err := readDirectory(walker, lastPathSlash, curPath, &storeCur)
+						idx, err := readDirectory(walker, lastPathSlash, curPath, &tempCur)
 						if err != nil {
 							if errors.Is(err, errMaxHeight) {
 								continue
@@ -170,30 +185,23 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 						curPath = bytes.TrimSuffix(curPath, curPrefix)
 						curPrefix = append(curPrefix, fork.prefix...)
 					}
-					if err := walker(File, curPath, curPrefix, fork.Reference()); err != nil {
-						return err
+					if tempCur <= level {
+						if err := walker(File, curPath, curPrefix, fork.Reference()); err != nil {
+							return err
+						}
 					}
 				}
 			}
 
 			if fork.IsEdgeType() {
-				if next.IsWithPathSeparatorType() {
-					idx, err := readDirectory(walker, lastPathSlash, path, &storeCur)
-					if err != nil {
-						if errors.Is(err, errMaxHeight) {
-							continue
-						}
-						return err
-					}
-					lastPathSlash = idx
-				}
 				var curPath, subPath []byte
 				dirSlash := bytes.LastIndexByte(fork.prefix, byte(PathSeparator))
+				tempCur := cur
 				if dirSlash != -1 {
 					copyPath := make([]byte, len(path)+dirSlash+1)
 					copy(copyPath, path)
 					copy(copyPath[len(path):], fork.prefix[:dirSlash+1])
-					idx, err := readDirectory(walker, lastPathSlash, copyPath, &storeCur)
+					idx, err := readDirectory(walker, lastPathSlash, copyPath, &tempCur)
 					if err != nil {
 						if !errors.Is(err, errMaxHeight) {
 							return err
@@ -201,14 +209,27 @@ func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint,
 					}
 					curPath = copyPath[:idx]
 					subPath = fork.prefix[dirSlash+1:]
+					if bytes.HasSuffix(curPath, []byte{byte(PathSeparator)}) {
+						tempCur++
+					}
 				} else {
-					curPath = path[:lastPathSlash]
-					subPath = make([]byte, len(path)+len(fork.prefix)-lastPathSlash)
-					copy(subPath, path[lastPathSlash:])
-					copy(subPath[len(path)-lastPathSlash:], fork.prefix)
+					slashIndex := bytes.LastIndexByte(path, byte(PathSeparator)) + 1
+					if slashIndex != 0 {
+						curPath = path[:slashIndex]
+						subPath = make([]byte, len(path)+len(fork.prefix)-slashIndex)
+						copy(subPath, path[slashIndex:])
+						copy(subPath[len(path)-slashIndex:], fork.prefix)
+					} else {
+						curPath = path
+						subPath = make([]byte, len(fork.prefix))
+						copy(subPath, fork.prefix)
+					}
+					if slashIndex != 0 && slashIndex != lastPathSlash {
+						tempCur++
+					}
 				}
-				if storeCur <= level {
-					q.PushBack(&nodeTag{Node: fork.Node, path: curPath, subPath: subPath, level: storeCur + 1})
+				if tempCur <= level {
+					q.PushBack(&nodeTag{Node: fork.Node, path: curPath, subPath: subPath, level: tempCur})
 				}
 			}
 		}
