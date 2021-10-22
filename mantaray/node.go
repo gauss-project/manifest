@@ -181,11 +181,14 @@ func (n *Node) Lookup(ctx context.Context, path []byte, l Loader) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
+	if !node.IsValueType() && len(path) > 0 {
+		return nil, notFound(path)
+	}
 	return node.entry, nil
 }
 
 // Add adds an entry to the path
-func (n *Node) Add(ctx context.Context, path []byte, entry []byte, metadata map[string]string, ls LoadSaver) error {
+func (n *Node) Add(ctx context.Context, path, entry []byte, metadata map[string]string, ls LoadSaver) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -199,14 +202,13 @@ func (n *Node) Add(ctx context.Context, path []byte, entry []byte, metadata map[
 		if len(entry) > 0 {
 			n.refBytesSize = len(entry)
 		}
-	} else {
-		if len(entry) > 0 && n.refBytesSize != len(entry) {
-			return fmt.Errorf("invalid entry size: %d, expected: %d", len(entry), n.refBytesSize)
-		}
+	} else if len(entry) > 0 && n.refBytesSize != len(entry) {
+		return fmt.Errorf("invalid entry size: %d, expected: %d", len(entry), n.refBytesSize)
 	}
 
 	if len(path) == 0 {
 		n.entry = entry
+		n.makeValue()
 		if len(metadata) > 0 {
 			n.metadata = metadata
 			n.makeWithMetadata()

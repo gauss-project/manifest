@@ -8,7 +8,7 @@ import (
 	"math"
 )
 
-type WalkLevelFunc func(nodeType int, path, prefix, hash []byte) error
+type WalkLevelFunc func(nodeType int, path, prefix, hash []byte, metadata map[string]string) error
 
 const (
 	File = iota
@@ -39,7 +39,7 @@ func walkDeepFirst(ctx context.Context, l Loader, n *Node, path, prefix []byte, 
 	for i := 0; i < len(prefix); i++ {
 		nextPath = append(nextPath, prefix[i])
 		if prefix[i] == byte(PathSeparator) {
-			if err := walker(Directory, copyPath(nextPath), []byte{}, nil); err != nil {
+			if err := walker(Directory, copyPath(nextPath), []byte{}, n.Reference(), n.Metadata()); err != nil {
 				return err
 			}
 		}
@@ -56,7 +56,7 @@ func walkDeepFirst(ctx context.Context, l Loader, n *Node, path, prefix []byte, 
 				curPath = []byte{}
 				curFile = nextPath
 			}
-			if err := walker(File, copyPath(curPath), copyPath(curFile), n.Reference()); err != nil {
+			if err := walker(File, copyPath(curPath), copyPath(curFile), n.Entry(), n.Metadata()); err != nil {
 				return err
 			}
 		}
@@ -120,8 +120,16 @@ func walkBreathFirst(ctx context.Context, l Loader, n *Node, path []byte, level 
 		if !errors.Is(err, errAlreadyEntered) {
 			return err
 		}
-		root.prefix = remain
-		root.level++
+		slashIndex := bytes.IndexByte(remain, byte(PathSeparator))
+		if slashIndex == -1 {
+			root.level++
+			root.prefix = remain
+		} else {
+			if bytes.HasSuffix(path, remain[slashIndex+1:]) {
+				root.level++
+			}
+			root.prefix = remain[slashIndex+1:]
+		}
 	}
 
 	q := list.New()
@@ -147,7 +155,7 @@ pop:
 			nextPath = append(nextPath, t.prefix[i])
 			if t.prefix[i] == byte(PathSeparator) {
 				t.level++
-				if err := walker(Directory, copyPath(nextPath), []byte{}, nil); err != nil {
+				if err := walker(Directory, copyPath(nextPath), []byte{}, t.Reference(), t.Metadata()); err != nil {
 					return err
 				}
 			}
@@ -167,7 +175,7 @@ pop:
 					curPath = []byte{}
 					curFile = nextPath
 				}
-				if err := walker(File, copyPath(curPath), copyPath(curFile), t.Reference()); err != nil {
+				if err := walker(File, copyPath(curPath), copyPath(curFile), t.Entry(), t.Metadata()); err != nil {
 					return err
 				}
 			}
