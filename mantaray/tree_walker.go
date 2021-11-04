@@ -13,6 +13,8 @@ type WalkLevelFunc func(nodeType int, path, prefix, hash []byte, metadata map[st
 const (
 	File = iota
 	Directory
+
+	MaxLevel = math.MaxUint32
 )
 
 var (
@@ -195,7 +197,7 @@ pop:
 }
 
 func (n *Node) WalkLevel(ctx context.Context, root []byte, l Loader, level uint, walker WalkLevelFunc) error {
-	if len(root) == 0 && level == math.MaxUint64 {
+	if len(root) == 0 && level == MaxLevel {
 		return walkDeepFirst(ctx, l, n, root, []byte{}, walker)
 	}
 
