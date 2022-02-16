@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sort"
 )
 
 type WalkLevelFunc func(nodeType int, path, prefix, hash []byte, metadata map[string]string) error
@@ -18,7 +19,7 @@ const (
 )
 
 var (
-	errMaxHeight = errors.New("reach maximum directory level")
+	errMaxHeight      = errors.New("reach maximum directory level")
 	errAlreadyEntered = errors.New("already entered the directory")
 )
 
@@ -64,7 +65,18 @@ func walkDeepFirst(ctx context.Context, l Loader, n *Node, path, prefix []byte, 
 		}
 	}
 
-	for _, v := range n.forks {
+	bytesOrder := make([]byte, 0)
+
+	for b := range n.forks {
+		bytesOrder = append(bytesOrder, b)
+	}
+
+	sort.Slice(bytesOrder, func(i, j int) bool {
+		return bytesOrder[i] <= bytesOrder[j]
+	})
+
+	for _, b := range bytesOrder {
+		v := n.forks[b]
 		err := walkDeepFirst(ctx, l, v.Node, nextPath, v.prefix, walker)
 		if err != nil {
 			return err
@@ -101,16 +113,16 @@ func (n *Node) lookupClosest(ctx context.Context, path []byte, l Loader) (*Node,
 
 type nodeTag struct {
 	*Node
-	level uint
-	path []byte
+	level  uint
+	path   []byte
 	prefix []byte
 }
 
 func walkBreathFirst(ctx context.Context, l Loader, n *Node, path []byte, level uint, walker WalkLevelFunc) error {
 	p, remain, err := n.lookupClosest(ctx, path, l)
 	root := &nodeTag{
-		Node: p,
-		path: []byte{},
+		Node:   p,
+		path:   []byte{},
 		prefix: []byte{},
 	}
 
@@ -183,11 +195,22 @@ pop:
 			}
 		}
 
-		for _, v := range t.forks {
+		bytesOrder := make([]byte, 0)
+
+		for b := range t.forks {
+			bytesOrder = append(bytesOrder, b)
+		}
+
+		sort.Slice(bytesOrder, func(i, j int) bool {
+			return bytesOrder[i] <= bytesOrder[j]
+		})
+
+		for _, b := range bytesOrder {
+			v := t.forks[b]
 			q.PushBack(&nodeTag{
-				Node: v.Node,
-				path: nextPath,
-				level: t.level,
+				Node:   v.Node,
+				path:   nextPath,
+				level:  t.level,
 				prefix: v.prefix,
 			})
 		}
