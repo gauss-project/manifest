@@ -77,10 +77,13 @@ func walkDeepFirst(ctx context.Context, l Loader, n *Node, path, prefix []byte, 
 
 	for _, b := range bytesOrder {
 		v := n.forks[b]
+		v.index = n.Index()
 		err := walkDeepFirst(ctx, l, v.Node, nextPath, v.prefix, walker)
 		if err != nil {
 			return err
 		}
+		n.index = v.index
+
 	}
 
 	return nil

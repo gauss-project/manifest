@@ -249,6 +249,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 		bb := &bitsForBytes{}
 		bb.fromBytes(data[offset:])
 		offset += 32 // skip forks
+		n.index++
 		return bb.iter(func(b byte) error {
 			f := &fork{}
 
@@ -261,7 +262,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 			if err != nil {
 				return fmt.Errorf("%w on byte '%x'", err, []byte{b})
 			}
-
+			f.index = n.index
 			n.forks[b] = f
 			offset += nodeForkPreReferenceSize + refBytesSize
 			return nil
@@ -283,6 +284,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 		bb := &bitsForBytes{}
 		bb.fromBytes(data[offset:])
 		offset += 32 // skip forks
+		n.index++
 		return bb.iter(func(b byte) error {
 			f := &fork{}
 
@@ -318,7 +320,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 					return fmt.Errorf("%w on byte '%x'", err, []byte{b})
 				}
 			}
-
+			f.index = n.index
 			n.forks[b] = f
 			offset += nodeForkSize
 			return nil

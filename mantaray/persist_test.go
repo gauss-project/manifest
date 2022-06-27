@@ -86,7 +86,7 @@ func (m *mockLoadSaver) Save(_ context.Context, b []byte) ([]byte, error) {
 	return a[:], nil
 }
 
-func (m *mockLoadSaver) Load(_ context.Context, ab []byte) ([]byte, error) {
+func (m *mockLoadSaver) Load(_ context.Context, ab []byte, _ int64) ([]byte, error) {
 	var a addr
 	copy(a[:], ab)
 	m.mtx.Lock()

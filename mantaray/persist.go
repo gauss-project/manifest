@@ -21,7 +21,7 @@ var (
 // from a persistent storage
 // for read only operations only
 type Loader interface {
-	Load(ctx context.Context, reference []byte) (data []byte, err error)
+	Load(ctx context.Context, reference []byte, index int64) (data []byte, err error)
 }
 
 // Saver defines a generic interface to persist nodes
@@ -44,7 +44,7 @@ func (n *Node) load(ctx context.Context, l Loader) error {
 	if l == nil {
 		return ErrNoLoader
 	}
-	b, err := l.Load(ctx, n.ref)
+	b, err := l.Load(ctx, n.ref, n.index)
 	if err != nil {
 		return err
 	}
